@@ -239,23 +239,14 @@ bool PS3Driver::process(Gamepad * gamepad) {
         ps3Report.dpadUpAnalog      = gamepad->state.dpad & GAMEPAD_MASK_UP ? 0xFF : 0;
         ps3Report.dpadDownAnalog    = gamepad->state.dpad & GAMEPAD_MASK_DOWN ? 0xFF : 0;
 
-        if (gamepad->auxState.sensors.accelerometer.enabled) {
-            ps3Report.accelerometerX = ((gamepad->auxState.sensors.accelerometer.x & 0xFF) << 8) | ((gamepad->auxState.sensors.accelerometer.x & 0xFF00) >> 8);
-            ps3Report.accelerometerY = ((gamepad->auxState.sensors.accelerometer.y & 0xFF) << 8) | ((gamepad->auxState.sensors.accelerometer.y & 0xFF00) >> 8);
-            ps3Report.accelerometerZ = ((gamepad->auxState.sensors.accelerometer.z & 0xFF) << 8) | ((gamepad->auxState.sensors.accelerometer.z & 0xFF00) >> 8);
-        } else {
-            ps3Report.accelerometerX = PS3_CENTER_SIXAXIS;
-            ps3Report.accelerometerY = PS3_CENTER_SIXAXIS;
-            ps3Report.accelerometerZ = PS3_CENTER_SIXAXIS;
-        }
+        // Read accelerometer from MPU6050 via gamepad state
+ps3Report.accelerometerX = (int16_t)(gamepad->state.accelX * 1000.0f);
+ps3Report.accelerometerY = (int16_t)(gamepad->state.accelY * 1000.0f);
+ps3Report.accelerometerZ = (int16_t)(gamepad->state.accelZ * 1000.0f);
 
-        if (gamepad->auxState.sensors.gyroscope.enabled) {
-            ps3Report.gyroscopeZ = ((gamepad->auxState.sensors.gyroscope.z & 0xFF) << 8) | ((gamepad->auxState.sensors.gyroscope.z & 0xFF00) >> 8);
-            ps3Report.reserved4 = PS3_CENTER_SIXAXIS;
-        } else {
-            ps3Report.gyroscopeZ = PS3_CENTER_SIXAXIS;
-            ps3Report.reserved4 = PS3_CENTER_SIXAXIS;
-        }
+// Read gyroscope (only Z is used by PS3)
+ps3Report.gyroscopeZ = (int16_t)(gamepad->state.gyroZ * 1000.0f);
+ps3Report.reserved4 = PS3_CENTER_SIXAXIS;
 
         report = (uint8_t*)&ps3Report;
         report_size = sizeof(ps3Report);
