@@ -84,6 +84,11 @@ message("GIT_REPO_BUILD_ID is ${GIT_REPO_BUILD_ID}")
 # set(PICO_DEOPTIMIZED_DEBUG 1)
 
 project(GP2040-CE LANGUAGES C CXX ASM VERSION 1.0.0)
+
+# ========== ADDED LINE TO FIX MPU6050 HEADER SEARCH ==========
+include_directories(lib/MPU6050)
+# =============================================================
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
