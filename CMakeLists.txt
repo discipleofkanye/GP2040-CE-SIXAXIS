@@ -177,6 +177,7 @@ add_compile_options(-fdata-sections -ffunction-sections)
 add_link_options(-Wl,--gc-sections)
 
 add_subdirectory(lib)
+add_subdirectory(lib/MPU6050)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   # Activate some compiler / linker options to aid us with diagnosing stack space issues in Debug builds
@@ -294,6 +295,7 @@ src/addons/spi_analog_ads1256.cpp
 src/addons/gamepad_usb_host.cpp
 src/addons/gamepad_usb_host_listener.cpp
 src/addons/tg16_input.cpp
+src/addons/i2cmpu6050.cpp
 src/animationstation/animation.cpp
 src/animationstation/animationstation.cpp
 src/animationstation/effects/chase.cpp
@@ -331,6 +333,7 @@ WiiExtension
 SNESpad
 pico_mbedtls
 nanopb
+MPU6050
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
