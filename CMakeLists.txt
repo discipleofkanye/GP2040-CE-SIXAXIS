@@ -177,7 +177,6 @@ add_compile_options(-fdata-sections -ffunction-sections)
 add_link_options(-Wl,--gc-sections)
 
 add_subdirectory(lib)
-add_subdirectory(lib/MPU6050)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   # Activate some compiler / linker options to aid us with diagnosing stack space issues in Debug builds
@@ -304,6 +303,7 @@ src/animationstation/effects/customthemepressed.cpp
 src/animationstation/effects/rainbow.cpp
 src/animationstation/effects/staticcolor.cpp
 src/animationstation/effects/statictheme.cpp
+lib/MPU6050/MPU6050.cpp
 ${PROTO_OUTPUT_DIR}/enums.pb.c
 ${PROTO_OUTPUT_DIR}/config.pb.c
 )
@@ -333,7 +333,6 @@ WiiExtension
 SNESpad
 pico_mbedtls
 nanopb
-MPU6050
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
