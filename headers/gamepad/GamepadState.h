@@ -150,6 +150,12 @@ struct GamepadState
 	float ema_1_y {GAMEPAD_JOYSTICK_MID};
 	float ema_2_x {GAMEPAD_JOYSTICK_MID};
 	float ema_2_y {GAMEPAD_JOYSTICK_MID};
+
+	// MPU6050 accelerometer and gyro data
+	float accelX {0.0f};
+	float accelY {0.0f};
+	float accelZ {0.0f};
+	float gyroZ {0.0f};
 };
 
 // Convert the horizontal GamepadState dpad axis value into an analog value
