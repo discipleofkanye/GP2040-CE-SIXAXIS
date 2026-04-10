@@ -449,7 +449,8 @@ static const uint8_t ps3_device_descriptor[] =
     0x01,        // bNumConfigurations 1
 };
 
-static const uint8_t ps3_report_descriptor[] = {
+static const uint8_t ps3_report_descriptor[] = 
+{
     0x05, 0x01,        // Usage Page (Generic Desktop)
     0x09, 0x05,        // Usage (Game Pad)
     0xA1, 0x01,        // Collection (Application)
