@@ -31,6 +31,7 @@
 #include "addons/gamepad_usb_host.h"
 #include "addons/he_trigger.h"
 #include "addons/tg16_input.h"
+#include "addons/i2cmpu6050.h"
 
 // Pico includes
 #include "pico/bootrom.h"
