@@ -74,6 +74,8 @@ public:
     virtual void setup();       // IMU Setup
     virtual void preprocess() {}
     virtual void process();     // IMU Process
+		virtual void postprocess(bool);
+		virtual void reinit();
     virtual std::string name() { return I2CMPU6050Name; }
 private:
     MPU6050 * imu;
