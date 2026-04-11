@@ -37,3 +37,7 @@ void I2CMPU6050Input::process() {
 
 void I2CMPU6050Input::postprocess(bool) {}
 void I2CMPU6050Input::reinit() {}
+
+bool I2CMPU6050Input::available() {
+    return initialized;
+}
