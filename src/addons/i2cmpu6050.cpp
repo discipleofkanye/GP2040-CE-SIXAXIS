@@ -1,132 +1,47 @@
 #include "addons/i2cmpu6050.h"
-#include "ps4_driver.h"
-#include "storagemanager.h"
-#include "helper.h"
-#include "config.pb.h"
-#include "enums.pb.h"
-#include <math.h>
+#include "MPU6050.h"
+#include "peripheral_i2c.h"
 
-/* TODO:
-    - Add calibration routine for accelerometer?
-    - Add automatic calibration at standstill for gyro?
-*/
-
-bool I2CMPU6050Input::available() {
-    const MPU6050Options& options = Storage::getInstance().getAddonOptions().mpu6050Options;
-    if (!options.enabled) {
-        return false;
-    }
-    // Double check pin ranges
-    if (!isValidPin(options.i2cSDAPin) || !isValidPin(options.i2cSCLPin)){
-        return false;
-    }
-
-    // Make sure SDA/SCL are on the assigned i2c block
-    if ((options.i2cSDAPin + 2 * i2c_hw_index(options.i2cBlock == 0 ? i2c0 : i2c1))%4 != 0) {
-        return false;
-    }
-
-    if ((options.i2cSCLPin + 3 + 2 * i2c_hw_index(options.i2cBlock == 0 ? i2c0 : i2c1))%4 != 0) {
-        return false;
-    }
-
-    // Make sure speed is in range
-    if (options.i2cSpeed < 100000 || options.i2cSpeed > 400000) {
-        return false;
-    }
-
-    // Make sure address is valid for MPU6050 (default is 0x68, pull AD0 high for 0x69)
-    if (options.i2cAddress != 0x68 && options.i2cAddress != 0x69) {
-        return false;
-    }
-
-    // Make sure orientation is valid
-    if (options.orientation > 3) {
-        return false;
-    }
-    
-    PS4Data::getInstance().imu_enabled = true;
-
-    return true;
-}
+static MPU6050 mpu;
+static bool initialized = false;
 
 void I2CMPU6050Input::setup() {
-    const MPU6050Options& options = Storage::getInstance().getAddonOptions().mpu6050Options;
+    const AddonOptions& addonOptions = Storage::getInstance().getAddonOptions();
+    const MPU6050Options& options = addonOptions.mpu6050Options;
     
-    imu = new MPU6050(1,
-        options.i2cSDAPin,
-        options.i2cSCLPin,
-        options.i2cBlock == 0 ? i2c0 : i2c1,
-        options.i2cSpeed,
-        options.i2cAddress);
-    imu->init();
-    if (options.calibrateGyro) {
-        imu->calibrateGyro();
-        float x, y, z;
-        imu->getGyroOffsets(x, y, z);
-
-        MPU6050Options& options = Storage::getInstance().getAddonOptions().mpu6050Options;
-        options.calibrateGyro = false; // Only calibrate once until user sets this again in WebUI
-        options.gyroOffsetX = x;
-        options.gyroOffsetY = y;
-        options.gyroOffsetZ = z;
-        Storage::getInstance().save();
-    } else {
-        imu->setGyroOffsets(options.gyroOffsetX, options.gyroOffsetY, options.gyroOffsetZ);
+    if (!options.enabled) return;
+    
+    // Get I2C pins from board config or defaults
+    uint8_t sda = options.i2cSdaPin;
+    uint8_t scl = options.i2cSclPin;
+    if (sda == 0 && scl == 0) {
+        // Use default I2C0 pins (often GPIO 4 and 5)
+        sda = 4;
+        scl = 5;
     }
-
-    orientation = options.orientation;
-    upsideDown = options.upsideDown;
+    
+    // Initialize I2C at 400kHz
+    i2c_init(i2c0, 400 * 1000);
+    gpio_set_function(sda, GPIO_FUNC_I2C);
+    gpio_set_function(scl, GPIO_FUNC_I2C);
+    gpio_pull_up(sda);
+    gpio_pull_up(scl);
+    
+    if (mpu.begin(i2c0, sda, scl)) {
+        initialized = true;
+    }
 }
 
 void I2CMPU6050Input::process() {
-    float accelX, accelY, accelZ, gyroX, gyroY, gyroZ;
-    imu->readGyroscope(gyroX, gyroY, gyroZ); // deg/sec
-    imu->readAcceleration(accelX, accelY, accelZ); // G
+    if (!initialized) return;
     
-    // Flip X and Z if mounted on back of PCB (rotate around sensor Y axis 180deg)
-    if (upsideDown) {
-        accelX = -accelX;
-        gyroX = -gyroX;
-        accelZ = -accelZ;
-        gyroZ = -gyroZ;
+    int16_t ax, ay, az, gx, gy, gz;
+    if (mpu.readRawAccel(ax, ay, az) && mpu.readRawGyro(gx, gy, gz)) {
+        Gamepad* gamepad = Storage::getInstance().GetGamepad();
+        // Convert raw values to something usable (scale later in PS3Driver)
+        gamepad->state.accelX = ax;
+        gamepad->state.accelY = ay;
+        gamepad->state.accelZ = az;
+        gamepad->state.gyroZ = gz;  // Only Z gyro used by Sixaxis
     }
-    
-    // Convert MPU6050 axes to PS4 axes, depending on orientation
-    // PS4: x right, y up, z towards user.
-    // Default MPU6050 orientation: x right, y away from user, z up
-    Gamepad* gamepad = Storage::getInstance().GetGamepad();
-
-    gamepad->state.accelY = accelZ;
-    gamepad->state.gyroY = gyroZ;
-    switch (orientation) {
-        default:
-        case 0: // 0 deg
-            gamepad->state.accelX = accelX;
-            gamepad->state.gyroX = gyroX;
-            gamepad->state.accelZ = -accelY;
-            gamepad->state.gyroZ = -gyroY;
-            break;
-        case 1: // 90 deg counterclockwise
-            gamepad->state.accelX = -accelY;
-            gamepad->state.gyroX = -gyroY;
-            gamepad->state.accelZ = -accelX;
-            gamepad->state.gyroZ = -gyroX;
-            break;
-        case 2: // 180 deg
-            gamepad->state.accelX = -accelX;
-            gamepad->state.gyroX = -gyroX;
-            gamepad->state.accelZ = accelY;
-            gamepad->state.gyroZ = gyroY;
-            break;
-        case 3: // 270 deg counterclockwise
-            gamepad->state.accelX = accelY;
-            gamepad->state.gyroX = gyroY;
-            gamepad->state.accelZ = accelX;
-            gamepad->state.gyroZ = gyroX;
-            break;
-    }
-
-    return;
 }
-
