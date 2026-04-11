@@ -126,7 +126,7 @@ void GP2040::setup() {
 	addons.LoadAddon(new ReverseInput());
 	addons.LoadAddon(new TurboInput()); // Turbo overrides button states and should be close to the end
 	addons.LoadAddon(new InputMacro());
-	addons.LoadAddon(new I2CMPU6050Input(), CORE1_Input);
+	addons.LoadAddon(new I2CMPU6050Input(), CORE0_Input);
 
 	InputMode inputMode = gamepad->getOptions().inputMode;
 	const BootAction bootAction = getBootAction();
