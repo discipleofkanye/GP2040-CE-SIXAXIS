@@ -28,10 +28,14 @@ void I2CMPU6050Input::process() {
     int16_t ax, ay, az, gx, gy, gz;
     if (mpu.readRawAccel(ax, ay, az) && mpu.readRawGyro(gx, gy, gz)) {
         Gamepad* gamepad = Storage::getInstance().GetGamepad();
-        gamepad->state.accelX = ax;
-        gamepad->state.accelY = ay;
-        gamepad->state.accelZ = az;
-        gamepad->state.gyroZ = gz;
+
+        gamepad->auxState.sensors.accelerometer.enabled = true;
+        gamepad->auxState.sensors.accelerometer.x = ax;
+        gamepad->auxState.sensors.accelerometer.y = ay;
+        gamepad->auxState.sensors.accelerometer.z = az;
+
+        gamepad->auxState.sensors.gyroscope.enabled = true;
+        gamepad->auxState.sensors.gyroscope.z = gz;
     }
 }
 
