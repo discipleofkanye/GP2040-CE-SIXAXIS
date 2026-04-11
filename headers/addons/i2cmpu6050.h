@@ -80,7 +80,6 @@ public:
 		virtual void reinit();
     virtual std::string name() { return I2CMPU6050Name; }
 private:
-    MPU6050 * imu;
     uint8_t orientation = 0;
     bool upsideDown = false;
 };
