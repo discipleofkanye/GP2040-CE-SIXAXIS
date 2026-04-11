@@ -70,6 +70,8 @@
 
 class I2CMPU6050Input : public GPAddon {
 public:
+		virtual ~I2CMPU6050Input() = default;
+
     virtual bool available();
     virtual void setup();       // IMU Setup
     virtual void preprocess() {}
