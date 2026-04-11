@@ -21,369 +21,71 @@
 /* Ported for GP2040 by HoloPengin 2023 */
 
 #include "MPU6050.h"
-#include <cmath>
+#include "hardware/i2c.h"
 
-// Selected Mpu6050 register addresses (found in the invensense datasheet)
-#define MPU6050_REGISTER_SMPRT_DIV 0x19 // Sample rate divider
-#define MPU6050_REGISTER_CONFIG 0x1A // DLPF config
-#define MPU6050_REGISTER_GYRO_CONFIG 0x1B
-#define MPU6050_REGISTER_ACCEL_CONFIG 0x1C
-#define MPU6050_REGISTER_ACCEL_XOUT_H 0x3B // Accelerometer measurement
-#define MPU6050_REGISTER_ACCEL_XOUT_L 0x3C
-#define MPU6050_REGISTER_ACCEL_YOUT_H 0x3D
-#define MPU6050_REGISTER_ACCEL_YOUT_L 0x3E
-#define MPU6050_REGISTER_ACCEL_ZOUT_H 0x3F
-#define MPU6050_REGISTER_ACCEL_ZOUT_L 0x40
-#define MPU6050_REGISTER_TEMP_OUT_H 0x41 // Temperature measurement
-#define MPU6050_REGISTER_TEMP_OUT_L 0x42
-#define MPU6050_REGISTER_GYRO_XOUT_H 0x43 // Gyroscope measurement
-#define MPU6050_REGISTER_GYRO_XOUT_L 0x44
-#define MPU6050_REGISTER_GYRO_YOUT_H 0x45
-#define MPU6050_REGISTER_GYRO_YOUT_L 0x46
-#define MPU6050_REGISTER_GYRO_ZOUT_H 0x47
-#define MPU6050_REGISTER_GYRO_ZOUT_L 0x48
-#define MPU6050_REGISTER_PWR_MGMT_1 0x6B // Power management
-#define MPU6050_REGISTER_WHO_AM_I 0x75 // Contains address of the device (0x68)
+MPU6050::MPU6050() : _i2c(nullptr) {}
 
-// Default I2C address of the MPU6050 (0x69 if AD0 pin set to HIGH)
-#define MPU6050_DEFAULT_ADDRESS 0x68
-
-// Constant to convert raw temperature to Celsius degrees
-#define MPU6050_TEMP_LINEAR_COEF (1.0/340.00)
-#define MPU6050_TEMP_OFFSET       36.53
-
-// Constant to convert raw gyroscope to degree/s
-#define MPU6050_GYRO_FACTOR_250 (1.0/131.0)
-#define MPU6050_GYRO_FACTOR_500  (1.0/65.5)
-#define MPU6050_GYRO_FACTOR_1000 (1.0/32.8)
-#define MPU6050_GYRO_FACTOR_2000 (1.0/16.4)
-
-// Constant to convert raw acceleration to G
-#define MPU6050_ACCEL_FACTOR_2 (1.0 / 16384.0)
-#define MPU6050_ACCEL_FACTOR_4 (1.0 / 8192.0)
-#define MPU6050_ACCEL_FACTOR_8 (1.0 / 4096.0)
-#define MPU6050_ACCEL_FACTOR_16 (1.0 / 2048.0)
-
-MPU6050::MPU6050(int bWire, int sda, int scl, i2c_inst_t *picoI2C, int32_t speed, uint8_t addr) :
-m_accelerometerRange(Max2g),
-m_gyroscopeRange(Max250Dps)
-{
-    bbi2c.iSDA = sda;
-    bbi2c.iSCL = scl;
-    bbi2c.picoI2C = picoI2C;
-    bbi2c.bWire = bWire;
-    iSpeed = speed;
-    address = addr;
-}
-
-bool MPU6050::init(Mpu6050AccelerometerRange accelRange,
-                   Mpu6050GyroscopeRange gyroRange,
-                   Mpu6050DLPFBandwidth bandwidth,
-                   uint8_t SampleRateDivider)
-{
-    // Pull sensor out of sleep mode
-    I2CInit(&bbi2c, iSpeed);
-    if (!wakeUp())
-    {
+bool MPU6050::begin(i2c_inst_t *i2c, uint8_t sda_pin, uint8_t scl_pin) {
+    _i2c = i2c;
+    // Initialize I2C (if not already done – caller must have already called i2c_init)
+    // We'll assume the caller (i2cmpu6050.cpp) sets up I2C before calling this.
+    
+    // Wake up MPU6050
+    if (!writeRegister(MPU6050_PWR_MGMT_1, 0x00))
         return false;
-    }
-
-    // Test connection between the Arduino and the sensor
-    if (!isConnected())
-    {
+    
+    // Wait for wake
+    sleep_ms(10);
+    
+    // Verify WHO_AM_I
+    uint8_t whoami = 0;
+    if (!readRegister(MPU6050_WHO_AM_I, &whoami, 1))
         return false;
-    }
-
-    // Reduce output rate of the sensor
-    setSampleRateDivider(SampleRateDivider);
-
-    setAccelerometerRange(accelRange);
-    setGyroscopeRange(gyroRange);
-    setDLPFBandwidth(bandwidth);
-
-
+    if (whoami != 0x68)
+        return false;
+    
+    // Set gyro range to ±250°/s (0x00)
+    if (!writeRegister(MPU6050_GYRO_CONFIG, 0x00))
+        return false;
+    // Set accelerometer range to ±2g (0x00)
+    if (!writeRegister(MPU6050_ACCEL_CONFIG, 0x00))
+        return false;
+    
     return true;
 }
 
-void MPU6050::calibrateGyro()
-{
-    // Busy wait so it can settle.
-    // NOTE: If this is put onto a hotkey, the wait will need to be much longer so that user
-    // has a chance to let go of the controller on a flat surface.
-    busy_wait_ms(100);
-
-    // Take a sum of 1000 samples of the raw gyro
-    int32_t sumx = 0;
-    int32_t sumy = 0;
-    int32_t sumz = 0;
-
-    const int32_t SAMPLES = 1000;
-    for (int i = 0; i < SAMPLES; i++)
-    {
-        int16_t x, y, z;
-        readRawGyroscope(x, y, z);
-        sumx += x;
-        sumy += y;
-        sumz += z;
-    }
-    // Average the sum
-    float averagex = (float)sumx / (float)SAMPLES;
-    float averagey = (float)sumy / (float)SAMPLES;
-    float averagez = (float)sumz / (float)SAMPLES;
-
-    // Save offsets
-    gyroOffsetX = -averagex;
-    gyroOffsetY = -averagey;
-    gyroOffsetZ = -averagez;
-}
-
-void MPU6050::getGyroOffsets(float &x, float &y, float &z)
-{
-    x = gyroOffsetX;
-    y = gyroOffsetY;
-    z = gyroOffsetZ;
-}
-
-void MPU6050::setGyroOffsets(float x, float y, float z)
-{
-    gyroOffsetX = x;
-    gyroOffsetY = y;
-    gyroOffsetZ = z;
-}
-
-void MPU6050::readRawAcceleration(int16_t &rawAccelX, int16_t &rawAccelY, int16_t &rawAccelZ)
-{
-    uc[0] = MPU6050_REGISTER_ACCEL_XOUT_H; // accelX register (followed by y and z)
-    I2CWrite(&bbi2c, address, uc, 1);
-    I2CRead(&bbi2c, address, uc, 6);
-
-    rawAccelX = uc[0]<<8 | uc[1];
-    rawAccelY = uc[2]<<8 | uc[3];
-    rawAccelZ = uc[4]<<8 | uc[5];
-}
-
-void MPU6050::readAcceleration(float &x, float &y, float &z)
-{
-    int16_t rawAccelX, rawAccelY, rawAccelZ;
-    readRawAcceleration(rawAccelX, rawAccelY, rawAccelZ);
-    // TODO: Add calibration
-
-    // Conversion to physical units
-    x = rawAccelerationToG(rawAccelX);
-    y = rawAccelerationToG(rawAccelY);
-    z = rawAccelerationToG(rawAccelZ);
-}
-
-void MPU6050::readRawGyroscope(int16_t &rawGyroX, int16_t &rawGyroY, int16_t &rawGyroZ)
-{
-    uc[0] = MPU6050_REGISTER_GYRO_XOUT_H; // Gyro X register (followed by y and z)
-    I2CWrite(&bbi2c, address, uc, 1);
-    I2CRead(&bbi2c, address, uc, 6);
-    
-    rawGyroX = uc[0]<<8 | uc[1];
-    rawGyroY = uc[2]<<8 | uc[3];
-    rawGyroZ = uc[4]<<8 | uc[5];
-}
-
-void MPU6050::readGyroscope(float &x, float &y, float &z)
-{
-    int16_t rawGyroX, rawGyroY, rawGyroZ;
-    readRawGyroscope(rawGyroX, rawGyroY, rawGyroZ);
-    // Add drift offset
-    rawGyroX = static_cast<int16_t>(round(rawGyroX + gyroOffsetX));
-    rawGyroY = static_cast<int16_t>(round(rawGyroY + gyroOffsetY));
-    rawGyroZ = static_cast<int16_t>(round(rawGyroZ + gyroOffsetZ));
-    // Convert to physical units
-    x = rawGyroscopeToDps(rawGyroX);
-    y = rawGyroscopeToDps(rawGyroY);
-    z = rawGyroscopeToDps(rawGyroZ);
-}
-
-float MPU6050::readTemperature()
-{
-    int16_t rawTemperature = read16(MPU6050_REGISTER_TEMP_OUT_H);
-
-    return rawTemperatureToCelsius(rawTemperature);
-}
-
-void MPU6050::setAccelerometerRange(Mpu6050AccelerometerRange range)
-{
-    uint8_t accelRange = static_cast<int>(range) << 3;
-
-    uint8_t accelRangeRegister = read8(MPU6050_REGISTER_ACCEL_CONFIG);
-
-    // Change only the range in the register
-    accelRangeRegister = (accelRangeRegister & 0b11100111) | accelRange;
-
-    write8(MPU6050_REGISTER_ACCEL_CONFIG, accelRangeRegister);
-
-    m_accelerometerRange = range;
-}
-
-void MPU6050::setGyroscopeRange(Mpu6050GyroscopeRange range)
-{
-    uint8_t gyroRange = static_cast<int>(range) << 3;
-
-    uint8_t gyroRangeRegister = read8(MPU6050_REGISTER_GYRO_CONFIG);
-
-    // Change only the range in the register
-    gyroRangeRegister = (gyroRangeRegister & 0b11100111) | gyroRange;
-
-    write8(MPU6050_REGISTER_GYRO_CONFIG, gyroRangeRegister);
-
-    m_gyroscopeRange = range;
-}
-
-void MPU6050::setDLPFBandwidth(Mpu6050DLPFBandwidth bandwidth)
-{
-    uint8_t band = static_cast<uint8_t>(bandwidth);
-
-    uint8_t registerDLPF = read8(MPU6050_REGISTER_CONFIG);
-
-    registerDLPF = (registerDLPF & 0b11111000) | band; // change only bandwidth
-
-    write8(MPU6050_REGISTER_CONFIG, registerDLPF);
-}
-
-void MPU6050::setSampleRateDivider(uint8_t divider)
-{
-    write8(MPU6050_REGISTER_SMPRT_DIV, divider);
-}
-
-Mpu6050AccelerometerRange MPU6050::getAccelerometerRange()
-{
-    return m_accelerometerRange;
-}
-
-Mpu6050GyroscopeRange MPU6050::getGyroscopeRange()
-{
-    return m_gyroscopeRange;
-}
-
-Mpu6050DLPFBandwidth MPU6050::getDLPFBandwidth()
-{
-    uint8_t registerDLPF = read8(MPU6050_REGISTER_CONFIG);
-    registerDLPF &= 0b00000111; // Keep only the value of DLPF_CFG
-
-    return static_cast<Mpu6050DLPFBandwidth>(registerDLPF);
-}
-
-uint8_t MPU6050::getSampleRateDivider()
-{
-    return read8(MPU6050_REGISTER_SMPRT_DIV);
-}
-
-void MPU6050::reset()
-{
-    write8(MPU6050_REGISTER_PWR_MGMT_1, 0b10000000);
-}
-
-bool MPU6050::isConnected()
-{
-    // The content of WHO_AM_I is always 0x68, so if the wiring is right and
-    // the I2C communication works fine this function should return true
-    return read8(MPU6050_REGISTER_WHO_AM_I) == MPU6050_DEFAULT_ADDRESS;
-}
-
-void MPU6050::sleepMode()
-{
-    write8(MPU6050_REGISTER_PWR_MGMT_1, 0b01000000);
-}
-
-int MPU6050::wakeUp()
-{
-    return write8(MPU6050_REGISTER_PWR_MGMT_1, 0b00000000);
-}
-
-void MPU6050::set_ad0(bool ad0)
-{
-    address = MPU6050_DEFAULT_ADDRESS + ad0;
-}
-
-bool MPU6050::get_ad0()
-{
-    if (address == MPU6050_DEFAULT_ADDRESS)
-    {
+bool MPU6050::readRawAccel(int16_t &ax, int16_t &ay, int16_t &az) {
+    uint8_t buf[6];
+    if (!readRegister(MPU6050_ACCEL_XOUT_H, buf, 6))
         return false;
-    }
-    else
-    {
-        return true;
-    }
+    ax = (int16_t)((buf[0] << 8) | buf[1]);
+    ay = (int16_t)((buf[2] << 8) | buf[3]);
+    az = (int16_t)((buf[4] << 8) | buf[5]);
+    return true;
 }
 
-float MPU6050::rawTemperatureToCelsius(int16_t rawTemperature)
-{
-    return rawTemperature * MPU6050_TEMP_LINEAR_COEF + MPU6050_TEMP_OFFSET;
+bool MPU6050::readRawGyro(int16_t &gx, int16_t &gy, int16_t &gz) {
+    uint8_t buf[6];
+    // Gyro registers start at 0x43 (we need Z only, but read all for completeness)
+    if (!readRegister(0x43, buf, 6))
+        return false;
+    gx = (int16_t)((buf[0] << 8) | buf[1]);
+    gy = (int16_t)((buf[2] << 8) | buf[3]);
+    gz = (int16_t)((buf[4] << 8) | buf[5]);
+    return true;
 }
 
-float MPU6050::rawGyroscopeToDps(int16_t rawGyroscope)
-{
-    switch (m_gyroscopeRange)
-    {
-        case Max250Dps:
-            return rawGyroscope * MPU6050_GYRO_FACTOR_250;
-            break;
-        case Max500Dps:
-            return rawGyroscope * MPU6050_GYRO_FACTOR_500;
-            break;
-        case Max1000Dps:
-            return rawGyroscope * MPU6050_GYRO_FACTOR_1000;
-            break;
-        case Max2000Dps:
-            return rawGyroscope * MPU6050_GYRO_FACTOR_2000;
-            break;
-        default:
-            return 0;
-            break;
-    }
+bool MPU6050::readRegister(uint8_t reg, uint8_t *data, uint8_t len) {
+    if (!_i2c) return false;
+    int ret = i2c_write_blocking(_i2c, MPU6050_ADDR, &reg, 1, true);
+    if (ret != 1) return false;
+    ret = i2c_read_blocking(_i2c, MPU6050_ADDR, data, len, false);
+    return (ret == len);
 }
 
-float MPU6050::rawAccelerationToG(int16_t rawAcceleration)
-{
-    switch (m_accelerometerRange)
-    {
-        case Max2g:
-            return rawAcceleration * MPU6050_ACCEL_FACTOR_2;
-            break;
-        case Max4g:
-            return rawAcceleration * MPU6050_ACCEL_FACTOR_4;
-            break;
-        case Max8g:
-            return rawAcceleration * MPU6050_ACCEL_FACTOR_8;
-            break;
-        case Max16g:
-            return rawAcceleration * MPU6050_ACCEL_FACTOR_16;
-            break;
-        default:
-            return 0;
-            break;
-    }
-}
-
-// Read one register
-uint8_t MPU6050::read8(uint8_t registerAddr)
-{
-    uc[0] = registerAddr;
-    I2CWrite(&bbi2c, address, uc, 1);
-    I2CRead(&bbi2c, address, uc, 1);
-    return uc[0];
-}
-
-// read a value contained in two consecutive registers
-int16_t MPU6050::read16(uint8_t registerAddr)
-{
-    uc[0] = registerAddr;
-    I2CWrite(&bbi2c, address, uc, 1);
-    I2CRead(&bbi2c, address, uc, 2);
-    int16_t val = uc[0]<<8 | uc[1];
-    return val;
-}
-
-// write one register 
-int MPU6050::write8(uint8_t registerAddr, uint8_t value)
-{
-    uc[0] = registerAddr;
-    uc[1] = value;
-    return I2CWrite(&bbi2c, address, uc, 2);
+bool MPU6050::writeRegister(uint8_t reg, uint8_t value) {
+    if (!_i2c) return false;
+    uint8_t buf[2] = {reg, value};
+    int ret = i2c_write_blocking(_i2c, MPU6050_ADDR, buf, 2, false);
+    return (ret == 2);
 }
