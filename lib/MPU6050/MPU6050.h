@@ -27,6 +27,7 @@
 #define MPU6050_H
 
 #include <stdint.h>
+#include "hardware/i2c.h"
 
 // MPU6050 I2C address (default AD0 low)
 #define MPU6050_ADDR 0x68
