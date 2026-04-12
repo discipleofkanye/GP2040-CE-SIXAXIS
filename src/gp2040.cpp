@@ -32,6 +32,7 @@
 #include "addons/he_trigger.h"
 #include "addons/tg16_input.h"
 #include "addons/i2cmpu6050.h"
+#include "addons/mcp3208.h"          // <-- NEW: MCP3208 SPI ADC for analog sticks
 
 // Pico includes
 #include "pico/bootrom.h"
@@ -127,6 +128,11 @@ void GP2040::setup() {
 	addons.LoadAddon(new TurboInput()); // Turbo overrides button states and should be close to the end
 	addons.LoadAddon(new InputMacro());
 	addons.LoadAddon(new I2CMPU6050Input());
+
+	// MCP3208 SPI ADC for analog sticks (only if enabled in BoardConfig.h)
+#if MCP3208_ENABLED
+	addons.LoadAddon(new MCP3208Input());
+#endif
 
 	InputMode inputMode = gamepad->getOptions().inputMode;
 	const BootAction bootAction = getBootAction();
