@@ -1,7 +1,7 @@
 #pragma once
 
 #include "gpaddon.h"
-#include "Gamepad.h"
+#include "gamepad.h"
 
 #ifndef MCP3208_ENABLED
 #define MCP3208_ENABLED 0
