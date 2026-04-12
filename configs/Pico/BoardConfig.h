@@ -95,4 +95,9 @@
 #define BUTTON_LAYOUT BUTTON_LAYOUT_STICKLESS
 #define BUTTON_LAYOUT_RIGHT BUTTON_LAYOUT_STICKLESSB
 
+// ========== MCP3208 SPI ADC for analog sticks ==========
+#define MCP3208_ENABLED 1
+#define MCP3208_CS_PIN 17
+#define MCP3208_SPI_BLOCK spi0
+
 #endif
