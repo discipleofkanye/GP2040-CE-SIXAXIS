@@ -17,6 +17,8 @@
 
 class MCP3208Input : public GPAddon {
 public:
+    virtual ~MCP3208Input() = default;          // <-- FIX: virtual destructor
+
     virtual bool available();
     virtual void setup();
     virtual void process();
@@ -28,7 +30,6 @@ public:
 private:
     uint8_t readChannel(uint8_t channel);
     void spiInit();
-
     bool initialized = false;
     uint16_t stickValues[4];  // LX, LY, RX, RY
 };
