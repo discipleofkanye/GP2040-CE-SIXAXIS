@@ -300,6 +300,7 @@ src/addons/gamepad_usb_host.cpp
 src/addons/gamepad_usb_host_listener.cpp
 src/addons/tg16_input.cpp
 src/addons/i2cmpu6050.cpp
+src/addons/mcp3208.cpp
 src/animationstation/animation.cpp
 src/animationstation/animationstation.cpp
 src/animationstation/effects/chase.cpp
